@@ -1,0 +1,15 @@
+streamlit==1.31.0
+pandas
+numpy
+PyMuPDF==1.23.7
+tqdm==4.66.2
+torch==2.2.0
+langchain
+langchain-community
+langchain-core
+langchain-text-splitters
+sentence-transformers==2.3.1
+chromadb==0.5.7  
+huggingface-hub==0.20.3
+transformers==4.38.1
+accelerate==0.27.2
