@@ -12,7 +12,7 @@ from langchain_community.llms import HuggingFaceHub
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 load_dotenv()
-os.environ["HUGGINGFACE_API_TOKEN"]
+token = os.getenv("HUGGINGFACE_API_TOKEN")
 
 def setup_embeddings():
     model_name = "sentence-transformers/paraphrase-multilingual-MiniLM-L6-v2"
@@ -22,6 +22,7 @@ def setup_embeddings():
     embeddings = HuggingFaceEmbeddings(
         model_name=model_name,
         model_kwargs=model_kwargs,
+        huggingfacehub_api_token=token,
         encode_kwargs={"normalize_embeddings": True}
     )
     
