@@ -24,7 +24,6 @@ def setup_embeddings():
     embeddings = HuggingFaceEmbeddings(
         model_name=model_name,
         model_kwargs=model_kwargs,
-        huggingfacehub_api_token=token,
         encode_kwargs={"normalize_embeddings": True}
     )
     
