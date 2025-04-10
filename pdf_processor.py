@@ -6,7 +6,6 @@ from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 
 def get_pdf_text(pdf_path):
-    """استخراج متن از فایل PDF"""
     doc = fitz.Document(pdf_path)
     text = ""
     
@@ -17,7 +16,6 @@ def get_pdf_text(pdf_path):
     return text
 
 def process_pdfs(data_dir, db_dir):
-    """پردازش همه فایل‌های PDF و ایجاد پایگاه داده برداری"""
     pdf_files = [f for f in os.listdir(data_dir) if f.endswith('.pdf')]
     
     if not pdf_files:

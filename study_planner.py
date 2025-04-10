@@ -3,7 +3,6 @@ import numpy as np
 from datetime import datetime, timedelta
 
 def create_study_plan(student_info, rag_manager=None, llm=None):
-    """ایجاد برنامه هفتگی مطالعه با استفاده از اطلاعات دانش‌آموز و پشتیبانی اختیاری RAG"""
     name = student_info["name"]
     grade = student_info["grade"]
     field = student_info["field"]
@@ -54,12 +53,7 @@ def create_study_plan(student_info, rag_manager=None, llm=None):
         date = day_dates[day_idx]
         date_str = date.strftime("%Y-%m-%d")
         
-        if day == "جمعه":
-            
-            num_subjects_today = min(len(subjects), 3)
-        else:
-            num_subjects_today = min(len(subjects), 4)
-        
+        num_subjects_today = min(len(subjects), 4)
         
         if use_recommendations and "ریاضی" in recommendations.lower() and day_idx < 3:
             today_indices = []
@@ -92,16 +86,11 @@ def create_study_plan(student_info, rag_manager=None, llm=None):
             subject = subjects[idx]
             hours = subject_daily_hours[idx] * (0.8 + 0.4 * np.random.random())  
             
-            if day == "جمعه":
-                start_time = f"{8 + np.random.randint(0, 4)}:00"
-            else:
-                start_time = f"{15 + np.random.randint(0, 5)}:00"
-            
+            start_time = f"{15 + np.random.randint(0, 5)}:00"
             
             hours_int = int(hours)
             minutes_int = int((hours - hours_int) * 60)
             duration = f"{hours_int}:{minutes_int:02d}"
-            
             
             day_score = 0
             if use_recommendations:
@@ -136,7 +125,6 @@ def create_study_plan(student_info, rag_manager=None, llm=None):
     return final_plan
 
 def optimize_study_plan(study_plan_data, daily_hours):
-    """بهینه‌سازی نهایی برنامه مطالعه"""
     days = {}
     for item in study_plan_data:
         day = item["روز"]

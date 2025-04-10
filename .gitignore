@@ -3,3 +3,4 @@
 /vectordb
 /venv
 /__pycache__
+/.env
