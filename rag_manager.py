@@ -15,7 +15,6 @@ load_dotenv()
 token = os.getenv("HUGGINGFACE_API_TOKEN")
 
 os.environ["HUGGINGFACEHUB_API_TOKEN"] = token
-print("توکن:", token)
 
 def setup_embeddings():
     model_name = "sentence-transformers/distiluse-base-multilingual-cased-v1"
