@@ -15,8 +15,8 @@ def get_pdf_text(pdf_path):
         
     return text
 
-def process_pdfs(data_dir, db_dir):
-    pdf_files = [f for f in os.listdir(data_dir) if f.endswith('.pdf')]
+def process_pdfs(data, db_dir):
+    pdf_files = [f for f in os.listdir(data) if f.endswith('.pdf')]
     
     if not pdf_files:
         return None
@@ -24,7 +24,7 @@ def process_pdfs(data_dir, db_dir):
     documents = []
     
     for pdf_file in tqdm(pdf_files, desc="پردازش فایل‌های PDF"):
-        pdf_path = os.path.join(data_dir, pdf_file)
+        pdf_path = os.path.join(data, pdf_file)
         text = get_pdf_text(pdf_path)
         
         metadata = {"source": pdf_file}
