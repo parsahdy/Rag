@@ -1,9 +1,11 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 import os
-from pdf_processor import process_pdfs, get_pdf_text
+
+from pdf_processor import process_pdfs
 from rag_manager import RAGManager, setup_embeddings, get_llm
+from langchain_community.vectorstores import Chroma
 from study_planner import create_study_plan
 
 
@@ -66,22 +68,25 @@ with st.sidebar:
     st.subheader("PDF آپلود فایل‌های")
     uploaded_files = st.file_uploader("فایل‌های خود را بارگذاری کنید", type="pdf", accept_multiple_files=True)
     
-    if uploaded_files and not st.session_state.pdfs_processed and st.button("پردازش فایل‌ها"):
+    if uploaded_files and st.button("پردازش فایل‌ها"):
         with st.spinner("در حال پردازش فایل‌ها..."):
-            
+
             for uploaded_file in uploaded_files:
                 file_path = os.path.join(st.session_state.data_dir, uploaded_file.name)
                 with open(file_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
             
-            
-            process_pdfs(st.session_state.data_dir, st.session_state.db_dir)
-            
+            documents = process_pdfs(st.session_state.data_dir, st.session_state.db_dir)
+
+            if documents:
+                embeddings = setup_embeddings()
+                vectordb = Chroma.from_documents(documents, embedding=embeddings, persist_directory=st.session_state.db_dir)
+                vectordb.persist()
             
             embeddings = setup_embeddings()
             llm = get_llm()
             st.session_state.rag_manager = RAGManager(st.session_state.db_dir, llm, embeddings)
-            
+        
             st.session_state.pdfs_processed = True
             st.success("فایل‌ها با موفقیت پردازش شدند!")
             st.rerun()

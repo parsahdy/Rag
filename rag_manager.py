@@ -1,14 +1,21 @@
 import os
-from dotenv import load_dotenv
+import shutil
+import time
+
 from langchain_community.embeddings import HuggingFaceEmbeddings
 from langchain_community.vectorstores import Chroma
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.output_parsers import StrOutputParser
 from langchain.prompts import PromptTemplate
-import torch
 from langchain_community.llms import HuggingFaceHub
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+
+import torch
+
 import bidi.algorithm as bidi  
+from dotenv import load_dotenv
+
+from pdf_processor import process_pdfs
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -19,7 +26,6 @@ os.environ["HUGGINGFACEHUB_API_TOKEN"] = token
 
 def setup_embeddings():
     model_name = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
-    
     model_kwargs = {"device": DEVICE}
     
     embeddings = HuggingFaceEmbeddings(
@@ -32,7 +38,7 @@ def setup_embeddings():
 
 def get_llm():
     llm = HuggingFaceHub(
-        repo_id="mistralai/Mixtral-8x7B-Instruct-v0.1",  
+        repo_id="HooshvareLab/gpt2-fa",  
         model_kwargs={"temperature": 0.5, "max_length": 1024}
     )
     return llm
@@ -48,8 +54,7 @@ def format_docs(docs):
         
     return "\n\n".join(formatted_docs)
 
-class RAGManager:
-    
+class RAGManager: 
     def __init__(self, db_dir, llm, embeddings):
         self.db_dir = db_dir
         self.llm = llm
@@ -60,12 +65,13 @@ class RAGManager:
                 persist_directory=db_dir,
                 embedding_function=embeddings
             )
+
         except Exception as e:
             import shutil
             if os.path.exists(db_dir):
                 shutil.rmtree(db_dir)
                 os.makedirs(db_dir, exist_ok=True)
-            
+             
             self.vectordb = Chroma(
                 persist_directory=db_dir,
                 embedding_function=embeddings
@@ -170,3 +176,23 @@ def examine_retrieved_docs(rag_manager, query):
         print("-" * 40)
         print(doc.page_content)
         print("-" * 40)
+
+if __name__ == "__main__":
+    data_dir = "docs"
+    db_dir = "db"
+
+    embeddings = setup_embeddings()
+    llm = get_llm()
+    rag_manager = RAGManager(db_dir=db_dir, llm=llm, embeddings=embeddings)
+
+    documents = process_pdfs(data_dir, db_dir)
+    if documents:
+        num_chunks = rag_manager.add_documents(documents)
+        print(f"{num_chunks} بخش به پایگاه برداری اضافه شد.")
+    else:
+        print("هیچ فایل PDF معتبری یافت نشد.")
+
+    query = "هدف الگوریتم PageRank چیست؟"
+    examine_retrieved_docs(rag_manager, query)
+    print("\nپاسخ نهایی:")
+    print(rag_manager.get_response(query))
