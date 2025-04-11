@@ -63,11 +63,11 @@ with st.sidebar:
     )
     
     
-    st.subheader("آپلود فایل‌های PDF")
-    uploaded_files = st.file_uploader("فایل‌های PDF خود را بارگذاری کنید", type="pdf", accept_multiple_files=True)
+    st.subheader("PDF آپلود فایل‌های")
+    uploaded_files = st.file_uploader("فایل‌های خود را بارگذاری کنید", type="pdf", accept_multiple_files=True)
     
     if uploaded_files and not st.session_state.pdfs_processed and st.button("پردازش فایل‌ها"):
-        with st.spinner("در حال پردازش فایل‌های PDF..."):
+        with st.spinner("در حال پردازش فایل‌ها..."):
             
             for uploaded_file in uploaded_files:
                 file_path = os.path.join(st.session_state.data_dir, uploaded_file.name)
@@ -106,7 +106,7 @@ if tab_option == "مشاوره و گفتگو":
     
     if prompt := st.chat_input("سؤال خود را بپرسید"):
         if not st.session_state.pdfs_processed:
-            st.error("لطفاً ابتدا فایل‌های PDF را بارگذاری و پردازش کنید.")
+            st.error("لطفاً ابتدا فایل‌های خود را بارگذاری و پردازش کنید.")
             st.stop()
         
         
