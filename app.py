@@ -3,8 +3,8 @@ import pandas as pd
 from datetime import datetime
 import os
 
-from pdf_processor import process_pdfs
-from rag_manager import RAGManager, setup_embeddings, get_llm
+from pdf_processor import process_pdfs_with_pdfminer
+from rag_manager import RAGManager, setup_embeddings
 from langchain_community.vectorstores import Chroma
 from study_planner import create_study_plan
 
@@ -52,18 +52,20 @@ if "data_dir" not in st.session_state:
 if "db_dir" not in st.session_state:
     st.session_state.db_dir = "vectordb"
     os.makedirs(st.session_state.db_dir, exist_ok=True)
+if "model_type" not in st.session_state:
+    st.session_state.model_type = "local" 
 
 
 with st.sidebar:
     st.title("سیستم مشاور هوشمند")
     st.write("این سیستم به شما کمک می‌کند تا با استفاده از هوش مصنوعی به سؤالات خود پاسخ دهید و برنامه مطالعاتی بسازید.")
     
-    
     tab_option = st.radio(
         "بخش مورد نظر را انتخاب کنید:",
         ["مشاوره و گفتگو", "برنامه هفتگی مطالعه"]
     )
     
+    st.info("این برنامه از مدل زبانی Llama 3.1 با موتور Ollama استفاده می‌کند.")
     
     st.subheader("PDF آپلود فایل‌های")
     uploaded_files = st.file_uploader("فایل‌های خود را بارگذاری کنید", type="pdf", accept_multiple_files=True)
@@ -76,7 +78,7 @@ with st.sidebar:
                 with open(file_path, "wb") as f:
                     f.write(uploaded_file.getbuffer())
             
-            documents = process_pdfs(st.session_state.data_dir, st.session_state.db_dir)
+            documents = process_pdfs_with_pdfminer(st.session_state.data_dir, st.session_state.db_dir)
 
             if documents:
                 embeddings = setup_embeddings()
@@ -84,26 +86,23 @@ with st.sidebar:
                 vectordb.persist()
             
             embeddings = setup_embeddings()
-            llm = get_llm()
-            st.session_state.rag_manager = RAGManager(st.session_state.db_dir, llm, embeddings)
+            
+            st.session_state.rag_manager = RAGManager(
+                db_dir=st.session_state.db_dir, 
+                embeddings=embeddings,
+                use_local_model=True  
+            )
         
             st.session_state.pdfs_processed = True
             st.success("فایل‌ها با موفقیت پردازش شدند!")
             st.rerun()
-    
-    
-    if st.session_state.pdfs_processed and st.button("شروع مجدد گفتگو"):
-        st.session_state.messages = []
-        st.rerun()
-
-
-st.title("سیستم مشاور هوشمند مبتنی بر RAG")
 
 
 if tab_option == "مشاوره و گفتگو":
     st.header("گفتگو با مشاور هوشمند")
     
-    
+    st.info("استفاده از مدل زبانی Llama 3.1 با موتور Ollama")
+        
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
@@ -225,8 +224,14 @@ elif tab_option == "برنامه هفتگی مطالعه":
                 if st.session_state.pdfs_processed:
                     study_plan_data = create_study_plan(student_info, st.session_state.rag_manager)
                 else:
-                    llm = get_llm()
-                    study_plan_data = create_study_plan(student_info, None, llm)
+                    use_local_model = (st.session_state.model_type == "local")
+                    embeddings = setup_embeddings()
+                    temp_rag_manager = RAGManager(
+                        db_dir=st.session_state.db_dir, 
+                        embeddings=embeddings, 
+                        use_local_model=use_local_model
+                    )
+                    study_plan_data = create_study_plan(student_info, temp_rag_manager)
                 
                 
                 st.success("برنامه مطالعاتی با موفقیت ایجاد شد!")

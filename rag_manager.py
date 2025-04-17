@@ -1,28 +1,24 @@
 import os
-import shutil
-import time
+import re
+import traceback
 
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.vectorstores import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
 from langchain_core.runnables import RunnablePassthrough, RunnableLambda
 from langchain_core.output_parsers import StrOutputParser
 from langchain.prompts import PromptTemplate
-from langchain_community.llms import HuggingFaceHub
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 
-import torch
+from langchain_community.llms import Ollama
 
-import bidi.algorithm as bidi  
+import torch
 from dotenv import load_dotenv
 
-from pdf_processor import process_pdfs
+from pdf_processor import process_pdfs_with_pdfminer
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 load_dotenv()
-token = os.getenv("HUGGINGFACE_API_TOKEN")
-
-os.environ["HUGGINGFACEHUB_API_TOKEN"] = token
 
 def setup_embeddings():
     model_name = "sentence-transformers/paraphrase-multilingual-mpnet-base-v2"
@@ -36,29 +32,38 @@ def setup_embeddings():
     
     return embeddings
 
-def get_llm():
-    llm = HuggingFaceHub(
-        repo_id="HooshvareLab/gpt2-fa",  
-        model_kwargs={"temperature": 0.5, "max_length": 1024}
-    )
-    return llm
-
-def correct_rtl_text(text):
-    return bidi.get_display(text)
-
-def format_docs(docs):
-    formatted_docs = []
-    for i, doc in enumerate(docs):
-        content = correct_rtl_text(doc.page_content)
-        formatted_docs.append(f"Document {i+1}:\n{content}")
+def get_ollama_llm():
+    """Use Ollama with Llama 3.1 model"""
+    print("Setting up Ollama with Llama 3.1...")
+    
+    try:
+        llm = Ollama(
+            model="llama3.1",  
+            temperature=0.2,   
+            top_p=0.9,
+            top_k=40,
+            repeat_penalty=1.2,  
+            num_ctx=4096,      
+            num_predict=512    
+        )
         
-    return "\n\n".join(formatted_docs)
+        print("Ollama with Llama 3.1 loaded successfully!")
+        return llm
+    except Exception as e:
+        print(f"Error loading Ollama: {e}")
+        print(traceback.format_exc())
+        raise e
 
 class RAGManager: 
-    def __init__(self, db_dir, llm, embeddings):
+    def __init__(self, db_dir, embeddings, use_local_model=True):
         self.db_dir = db_dir
-        self.llm = llm
         self.embeddings = embeddings
+        
+        try:
+            self.llm = get_ollama_llm()
+        except Exception as e:
+            print(f"Error initializing Ollama: {e}")
+            raise e
         
         try:
             self.vectordb = Chroma(
@@ -76,34 +81,24 @@ class RAGManager:
                 persist_directory=db_dir,
                 embedding_function=embeddings
             )
-        
 
         self.retriever = self.vectordb.as_retriever(
             search_type="similarity",
-            search_kwargs={"k": 5}
+            search_kwargs={"k": 3}  
         )
         
-
         self.template = """
-        <div dir="rtl">
-        شما یک دستیار هوشمند فارسی‌زبان متخصص هستید.
+        <s>[INST]
+        شما یک دستیار آموزشی هوشمند هستید که به سوالات دانش‌آموزان پاسخ می‌دهد.
         
-        ### دستورالعمل‌ها:
-        - با دقت متن‌های ارائه شده را بخوانید
-        - فقط از اطلاعات موجود در متن‌ها برای پاسخ استفاده کنید
-        - به قسمت‌های مرتبط با سؤال در متن‌ها استناد کنید
-        - اگر اطلاعات کافی برای پاسخ در متن‌ها وجود ندارد، به صراحت بگویید
-        - از پاسخ‌های خیالی یا نامربوط خودداری کنید
-        - پاسخ را گام به گام توضیح دهید
+        با توجه به اطلاعات زیر، به سوال دانش‌آموز پاسخ دهید:
         
-        ### اطلاعات مرتبط:
+        اطلاعات مرتبط:
         {context}
         
-        ### سؤال کاربر: 
+        سوال دانش‌آموز:
         {question}
-        
-        ### پاسخ دقیق (با استناد به متن‌های بالا):
-        </div>
+        [/INST]
         """
         
         self.prompt = PromptTemplate(
@@ -111,10 +106,9 @@ class RAGManager:
             input_variables=["context", "question"]
         )
         
-
         self.rag_chain = (
             {
-                "context": self.retriever | RunnableLambda(format_docs), 
+                "context": self.retriever | RunnableLambda(lambda docs: self.format_docs(docs)),   
                 "question": RunnablePassthrough()
             }
             | self.prompt
@@ -122,77 +116,88 @@ class RAGManager:
             | StrOutputParser()
         )
     
-    def preprocess_text(self, text):
-        return text
-    
-    def add_documents(self, documents):
-        for doc in documents:
-            doc.page_content = self.preprocess_text(doc.page_content)
+    def format_docs(self, docs):
+        """Format retrieved documents in a way suitable for the LLM"""
+        if not docs:
+            return "هیچ سند مرتبطی یافت نشد."
+            
+        formatted_docs = []
         
+        for i, doc in enumerate(docs):
+            try:
+                content = doc.page_content.strip()
+                formatted_docs.append(f"متن {i+1}:\n{content}")
+                
+            except Exception as e:
+                print(f"Error formatting document {i}: {e}")
+        
+        if not formatted_docs:
+            return "دسترسی به محتوای اسناد با مشکل مواجه شد."
+            
+        return "\n\n".join(formatted_docs)
 
-        text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500,
-            chunk_overlap=100,
-            separators=["\n\n", "\n", ".", "!", "؟", "،", " ", ""],  
-            length_function=len,
-        )
-        
-        chunks = text_splitter.split_documents(documents)
-        self.vectordb.add_documents(chunks)
-        self.vectordb.persist()
-        return len(chunks)
-    
     def get_response(self, query):
+        """Get a response using the RAG chain with Ollama"""
         try:
-            response = self.rag_chain.invoke(query)
+            docs = self.vectordb.similarity_search(query, k=3)
+            
+            if not docs:
+                return "متأسفانه اطلاعات مرتبطی با سوال شما در پایگاه داده یافت نشد."
+            
+            context = self.format_docs(docs)
+            
+            prompt = f"""<s>[INST]
+            شما یک دستیار آموزشی فارسی زبان هستید که به سوالات دانش‌آموزان پاسخ می‌دهد.
+            
+            اطلاعات مرتبط:
+            {context}
+            
+            سوال دانش‌آموز:
+            {query}
+            
+            پاسخ دهید:
+            [/INST]
+            """
+            
+            response = self.llm.invoke(prompt)
+            
+            response = response.strip()
+            
             return response
+            
         except Exception as e:
             error_msg = str(e)
-            if "dimension" in error_msg.lower():
-                return "خطا: ابعاد امبدینگ با پایگاه داده مطابقت ندارد. لطفاً پایگاه داده را بازنشانی کنید."
-            elif "api" in error_msg.lower() or "server" in error_msg.lower():
-                return "خطا در ارتباط با سرور هاگینگ‌فیس. لطفاً اتصال اینترنت خود را بررسی کنید یا دوباره تلاش کنید."
-            else:
-                return f"خطا در پردازش پرسش شما: {error_msg}"
-    
+            print(f"Error in get_response: {error_msg}")
+            print(traceback.format_exc())
+            return f"خطا در پردازش پرسش شما: {str(e)}"
+            
     def get_similar_documents(self, query, k=5):
+        """Get similar documents for a query"""
         try:
             docs = self.vectordb.similarity_search(query, k=k)
-            for doc in docs:
-                doc.page_content = correct_rtl_text(doc.page_content)
             return docs
         except Exception as e:
             print(f"Error retrieving documents: {e}")
             return []
-
-
-def examine_retrieved_docs(rag_manager, query):
-    docs = rag_manager.get_similar_documents(query)
-    
-    print(f"Query: {query}")
-    print("Retrieved Documents:")
-    for i, doc in enumerate(docs):
-        print(f"\nDocument {i+1}:")
-        print("-" * 40)
-        print(doc.page_content)
-        print("-" * 40)
-
-if __name__ == "__main__":
-    data_dir = "docs"
-    db_dir = "db"
-
-    embeddings = setup_embeddings()
-    llm = get_llm()
-    rag_manager = RAGManager(db_dir=db_dir, llm=llm, embeddings=embeddings)
-
-    documents = process_pdfs(data_dir, db_dir)
-    if documents:
-        num_chunks = rag_manager.add_documents(documents)
-        print(f"{num_chunks} بخش به پایگاه برداری اضافه شد.")
-    else:
-        print("هیچ فایل PDF معتبری یافت نشد.")
-
-    query = "هدف الگوریتم PageRank چیست؟"
-    examine_retrieved_docs(rag_manager, query)
-    print("\nپاسخ نهایی:")
-    print(rag_manager.get_response(query))
+        
+    def debug_vector_retrieval(self, query):
+        """Debug function to check vector retrieval"""
+        print("\n--- DEBUGGING VECTOR RETRIEVAL ---")
+        print(f"Query: {query}")
+        
+        try:
+            docs = self.vectordb.similarity_search(query, k=3)
+            print(f"Retrieved {len(docs)} documents")
+            
+            for i, doc in enumerate(docs):
+                print(f"\nDocument {i+1}:")
+                print("-" * 40)
+                print(doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content)
+                print("-" * 40)
+                
+            return docs
+        except Exception as e:
+            print(f"Error in vector retrieval: {e}")
+            traceback_str = traceback.format_exc()
+            print(traceback_str)
+            return []

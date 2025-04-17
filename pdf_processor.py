@@ -5,42 +5,37 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import Chroma
 from langchain_core.documents import Document
 
-def process_pdfs(data, db_dir):
-    pdf_files = [f for f in os.listdir(data) if f.endswith('.pdf')]
+def process_pdfs_with_pdfminer(data_dir, db_dir):
+    from pdfminer.high_level import extract_text
+    from bidi.algorithm import get_display
+    from langchain.schema import Document
+    import os
     
-    if not pdf_files:
-        return None
+    if not os.path.exists(data_dir):
+        return []
     
-    all_chunks = []
+    documents = []
     
-    text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,
-        chunk_overlap=100,
-        separators=["\n\n", "\n", ".", "!", "؟", "،", " ", ""],  
-        length_function=len,
-    )
-    
-    for pdf_file in tqdm(pdf_files, desc="پردازش فایل‌های PDF"):
-        pdf_path = os.path.join(data, pdf_file)
-        text = get_pdf_text(pdf_path)
+    try:
+        for filename in os.listdir(data_dir):
+            if filename.endswith('.pdf'):
+                pdf_path = os.path.join(data_dir, filename)
+                
+                try:
+                    text = extract_text(pdf_path)
+                    
+                    text = get_display(text)
+                    
+                    if text.strip():
+                        metadata = {"source": filename}
+                        documents.append(Document(page_content=text, metadata=metadata))
+                except Exception as e:
+                    print(f"Error processing {filename}: {e}")
         
-        
-        print(f"نمونه متن از {pdf_file}: {text[:200]}")
-
-        doc = Document(page_content=text, metadata={"source": pdf_file})
-        
-        chunks = text_splitter.split_documents([doc])
-        
-        for i, chunk in enumerate(chunks):
-            chunk.metadata["chunk"] = i
-            chunk.metadata["total_chunks"] = len(chunks)
-        
-        all_chunks.extend(chunks)
-    
-    print(f"Total documents processed: {len(pdf_files)}")
-    print(f"Total chunks created: {len(all_chunks)}")
-    
-    return all_chunks
+        return documents
+    except Exception as e:
+        print(f"Error accessing directory {data_dir}: {e}")
+        return []
 
 def get_pdf_text(pdf_path):
     doc = fitz.open(pdf_path)
