@@ -71,8 +71,3 @@ If you have a GPU, the system will automatically utilize it.
 Larger models may require more powerful hardware.
 Contribution
 Your contributions to improve this project are greatly appreciated. Please report issues or submit pull requests.
-
-License
-This project is released under the MIT License.
-
-This translation maintains the structure and intent of your original text, making it suitable for a GitHub README. Let me know if you’d like any adjustments!
